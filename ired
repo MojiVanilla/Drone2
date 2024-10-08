@@ -1,0 +1,109 @@
+  <launch>
+   <arg name="image_view" default="false" />
+   <arg name="camera_node_name" default="aruco_usb_cam"/>
+
+   <node name="$(arg camera_node_name)" pkg="usb_cam" type="usb_cam_node" output="screen" >
+       <rosparam command="load" file="$(find ired_aruco)/configs/usb_cam.yaml"/>
+   </node>
+   <node if="$(arg image_view)" name="image_view" pkg="image_view" type="image_view" respawn="false" output="screen">
+       <remap from="image" to="/$(arg camera_node_name)/image_raw"/>
+       <param name="autosize" value="true" />
+   </node>
+</launch>
+
+$ mkdir configs && nano usb_cam.yaml
+
+start_service_name: "start_capture"
+stop_service_name: "stop_capture"
+video_device: /dev/video0
+io_method: mmap
+pixel_format: yuyv #yuyv
+color_format: yuv422p
+create_suspended: false
+full_ffmpeg_log: false
+camera_name: aruco_usb_cam
+camera_frame_id: aruco_camera_link
+camera_transport_suffix: image_raw
+# camera_info_url: "file:///home/aims/ired_ws/src/ired/ired_aruco/configs/camera_calibration.yaml"
+image_width: 1280
+image_height: 720
+framerate: 15
+
+intrinsic_controls:                
+   focus_auto: true
+   exposure_auto_priority: true
+   exposure_auto: 3
+   white_balance_temperature_auto: true
+   power_line_frequency: 1
+   ignore: [
+       brightness,
+       contrast,
+       saturation,
+       gain,
+       sharpness,
+       backlight_compensation,
+       white_balance_temperature,
+       exposure_absolute,
+       pan_absolute,
+       tilt_absolute,
+       focus_absolute,
+       zoom_absolute,
+   ]
+----------------------------------------------------------------
+$ roslaunch ired_aruco usb_cam.launch
+$ rosrun camera_calibration cameracalibrator.py --size 8x6 \
+  --square 0.026 image:=/aruco_usb_cam/image_raw camera:=/aruco_usb_cam
+----------------------------------------------------------------
+$ roscd ired_aruco
+$ mkdir config
+$ cd config
+$ tar -xvzf /tmp/calibrationdata.tar.gz -C .tar -xvzf /tmp/calibrationdata.tar.gz -C .
+$ mv ost.yaml camera_calibration.yaml
+----------------------------------------------------------------
+$ roscd ired_aruco/configs && nano usb_cam.yaml
+line 12: camera_info_url: "file:///home/ired/ired/ired_ws/src/ired_aruco/configs/camera_calibration.yaml"
+---------------------------------------------------------------
+$ roscd ired_aruco/configs && nano camera_calibration.yaml
+line 3: camera_name: aruco_usb_cam
+---------------------------------------------------------------
+$ sudo apt install ros-noetic-aruco-detect
+---------------------------------------------------------------
+$ roscd ired_aruco/launch && nano aruco_detect.launch
+<launch>
+  <arg name="camera" default="/aruco_usb_cam"/>
+  <arg name="image" default="image_raw"/>
+  <arg name="transport" default="compressed"/>
+  <arg name="fiducial_len" default="0.100"/>
+  <arg name="dictionary" default="16"/>
+  <arg name="do_pose_estimation" default="true"/>
+  <arg name="ignore_fiducials" default="" />
+  <arg name="fiducial_len_override" default="" />
+  <arg name="image_view" default="false"/>
+
+  <include file="$(find ired_aruco)/launch/usb_cam.launch">
+    <arg name="image_view" value="$(arg image_view)"/>
+  </include>
+
+  <node pkg="aruco_detect" name="aruco_detect"
+    type="aruco_detect" respawn="true">
+    <param name="image_transport" value="$(arg transport)"/>
+    <param name="publish_images" value="true" />
+    <param name="fiducial_len" value="$(arg fiducial_len)"/>
+    <param name="dictionary" value="$(arg dictionary)"/>
+    <param name="do_pose_estimation" value="$(arg do_pose_estimation)"/>
+    <param name="ignore_fiducials" value="$(arg ignore_fiducials)"/>
+    <param name="fiducial_len_override" value="$(arg fiducial_len_override)"/>
+    <remap from="/camera/compressed" 
+        to="$(arg camera)/$(arg image)/$(arg transport)"/>
+    <remap from="/camera_info" to="$(arg camera)/camera_info"/>
+    <param name="adaptiveThreshConstant" value="7.0"/>
+    <param name="adaptiveThreshWinSizeMin" value="3"/>
+    <param name="adaptiveThreshWinSizeMax" value="53"/>
+    <param name="adaptiveThreshWinSizeStep" value="4"/>
+    <param name="maxMarkerPerimeterRate" value="5.0"/>
+  </node>
+
+</launch>
+------------------------------------------------------------------
+$ roslaunch ired_aruco aruco_detect.launch # terminal 1
+$ rosrun rviz rviz # terminal 2, add Image topic and tf
